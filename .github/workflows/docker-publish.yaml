@@ -1,0 +1,58 @@
+name: Create and Push Docker Image
+
+on:
+  workflow_dispatch:
+
+  push:
+    tags:
+      - "v[0-9]+\\.[0-9]+\\.[0-9]+"
+      - "v[0-9]+\\.[0-9]+\\.[0-9]+-*"
+
+env:
+  GCP_GAR_REPOSITORY: ${{ vars.GCP_GAR_REPOSITORY }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+            workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+            service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker to use gcloud as a credential helper
+        run: |
+          gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
+
+      - name: Extract tag name
+        id: tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG_NAME=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Docker image
+        run: |
+          docker build -f Dockerfile -t ton-bridge:${{ steps.tag.outputs.TAG_NAME }} .
+
+      - name: Tag Docker image for GAR
+        run: |
+          docker tag ton-bridge:${{ steps.tag.outputs.TAG_NAME }} $GCP_GAR_REPOSITORY/ton-bridge:${{ steps.tag.outputs.TAG_NAME }}
+
+      - name: Push Docker image to GAR (with version tag)
+        run: |
+          docker push $GCP_GAR_REPOSITORY/ton-bridge:${{ steps.tag.outputs.TAG_NAME }}
