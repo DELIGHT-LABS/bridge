@@ -42,7 +42,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -f Dockerfile -t ton-bridge:${{ steps.tag.outputs.TAG_NAME }} .
+          docker build -f ./docker/Dockerfile.bridge3 -t ton-bridge:${{ steps.tag.outputs.TAG_NAME }} .
 
       - name: Tag Docker image for GAR
         run: |
