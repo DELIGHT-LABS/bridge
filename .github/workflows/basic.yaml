@@ -13,7 +13,10 @@ jobs:
      steps:
 
      - name: Check out code
-       uses: actions/checkout@v5
+       uses: actions/checkout@v6
 
-     - name: unit tests
+     - name: test buildV1
        run: make build
+
+     - name: test buildV3
+       run: make build3

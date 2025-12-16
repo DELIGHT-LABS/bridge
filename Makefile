@@ -1,21 +1,27 @@
+GIT_REVISION=`git rev-parse --short HEAD`
+BRIDGE_VERSION=`git describe --tags --abbrev=0`
+LDFLAGS=-ldflags "-X github.com/ton-connect/bridge/internal.GitRevision=${GIT_REVISION} -X github.com/ton-connect/bridge/internal.BridgeVersion=${BRIDGE_VERSION}"
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor | grep -v yacc | grep -v .git)
 
-.PHONY: all imports fmt test test-bridge-sdk run stop clean logs status help
+.PHONY: all imports fmt test test-unit test-bench test-bridge-sdk run stop clean logs status help
 
 STORAGE ?= memory
-DOCKER_COMPOSE_FILE = docker-compose.memory.yml
+DOCKER_COMPOSE_FILE = docker/docker-compose.memory.yml
 
 # Set compose file based on storage type
 ifeq ($(STORAGE),memory)
-    DOCKER_COMPOSE_FILE = docker-compose.memory.yml
+    DOCKER_COMPOSE_FILE = docker/docker-compose.memory.yml
 else ifeq ($(STORAGE),postgres)
-    DOCKER_COMPOSE_FILE = docker-compose.postgres.yml
+    DOCKER_COMPOSE_FILE = docker/docker-compose.postgres.yml
 endif
 
 all: imports fmt test
 
 build:
-	go build -o bridge ./
+	go build -mod=mod ${LDFLAGS} -o bridge ./cmd/bridge
+
+build3:
+	go build -mod=mod ${LDFLAGS} -o bridge3 ./cmd/bridge3
 
 fmt:
 	gofmt -w $(GOFMT_FILES)
@@ -26,8 +32,16 @@ fmtcheck:
 lint:
 	golangci-lint run --timeout=10m --color=always
 
-test: 
-	go test $$(go list ./... | grep -v /vendor/) -race -coverprofile cover.out
+test: test-unit test-bench
+
+test-unit:
+	go test $$(go list ./... | grep -v vendor | grep -v test) -race -coverprofile cover.out
+
+test-bench:
+	go test -race -count 10 -timeout 15s -bench=BenchmarkConnectionCache -benchmem ./internal/v1/handler
+
+test-gointegration:
+	go test -v -p 10 -v -run TestBridge ./test/gointegration
 
 test-bridge-sdk:
 	@./scripts/test-bridge-sdk.sh
@@ -102,6 +116,8 @@ help:
 	@echo "  fmtcheck      - Check Go source file formatting"
 	@echo "  lint          - Run golangci-lint"
 	@echo "  test          - Run unit tests with race detection and coverage"
+	@echo "  test-unit     - Run unit tests only (same as test)"
+	@echo "  test-bench    - Run ConnectionCache benchmark tests"
 	@echo "  test-bridge-sdk - Run bridge SDK integration tests"
 	@echo ""
 	@echo "Docker Environment Commands:"
@@ -118,7 +134,8 @@ help:
 	@echo "Usage Examples:"
 	@echo "  make run                    # Start with memory storage"
 	@echo "  make STORAGE=postgres run   # Start with PostgreSQL storage"
-	@echo "  make test                   # Run all tests"
+	@echo "  make test                   # Run all unit tests"
+	@echo "  make test-bench             # Run ConnectionCache benchmarks"
 	@echo "  make clean                  # Clean up everything"
 	@echo ""
 	@echo "Bridge will be available at: http://localhost:8081"
